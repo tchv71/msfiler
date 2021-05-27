@@ -1,0 +1,67 @@
+;	PRINT.MAC - Assembler definition for text printing
+
+;	(c) TCHV       ,1992
+
+EXTRN	PRNT	; Print procedure
+
+
+cr	equ	13
+lf	equ	10
+print	macro	text
+	call	prnt
+	db	text,0
+	endm
+) TCHV       ,1992
+
+EXTRN	PRNT	; Print procedure
+
+
+cr	equ	13
+la	columns_left
+	jnz	@not_newline
+	lda	NUM_COLUMNS
+	sta	columns_left
+	print	<cr,lf>
+
+@not_newline:
+	RET
+
+	dseg
+NumFils:	DS	1
+Occupy:		ds	2
+Columns_Left:	ds	2
+	cseg
+
+; Shift binary number one bit right
+; HL - pointer to end of number
+; B -  number length
+SHRT:	PUSH	H
+	PUSH	B
+	XRA	A
+SHR0:	MOV	A,M
+	RAR
+	MOV	M,A
+	DCX	H
+	DCR	B
+	JNZ	SHR0
+	POP	B
+	POP	H
+	RET
+
+PRI0:	MOV	C,M
+	INX	H
+	CALL	CONOUT
+	DCR	B
+	JNZ	PRI0
+	RET
+
+	END
+	M,A
+	DCX	H
+	DCR	B
+	JNZ	SHR0
+	POP	B
+	POP	H
+	RET
+
+ееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееееее

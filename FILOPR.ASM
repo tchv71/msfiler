@@ -1,0 +1,218 @@
+; Version 1.2		(c) TCHV 1991 
+
+; 	5-Mar-1992
+PUBLIC	VER,OPN_FIL,RD_REC,CRT_FIL,WR_REC,CLS_FIL,ERS_FIL
+
+;       For this moment the module FILOPR allows you
+; to open ONE file either for reading or for writing
+; (but not both). You must CLOSE current file before
+; processing  another one.  So you  can't open  more
+; then 1 file at a moment.
+;
+;  You must read or write a records which size is
+; equal to cluster size on volume (public variable
+; ClstSize),but last record might be less.
+
+; from LOGRW module
+EXTRN	RD_FAT,WR_FAT,RD_CLST,WR_CLST,ClstSize
+; from FATDIR module
+EXTRN	SRCH_F,WR_DIR
+EXTRN	DIR_ADR
+EXTRN	GT_NFC,FND_FREE,FIL_FAT
+
+VER	EQU	0102H
+
+	.8080
+GETW	MACRO
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	INX	H
+	XCHG
+	ENDM
+
+; OPEN FILE FOR READING
+;  HL - POINTER TO DIRECTORY ENTRY
+; RETURNS CF=1 IF FILE NOT FOUND
+;  HL - FIRST FILE CLUSTER
+OPN_FIL:
+;	CALL	RD_FAT
+	LXI	B,1AH
+	DAD	B
+	GETW
+	SHLD	CURC_R
+	PUSH	H
+	XCHG
+	GETW
+	SHLD	CURS_R
+	POP	H
+	ORA	A	; CLEAR CF
+	RET
+
+EXTRN	?dvnhd
+; READ NEXT RECORD (1 CLUSTER)
+
+; IN: DE - CLUSTER  BUFFER
+; OUT: HL - NUMBER OF BYTES ACTUALLY READ
+; CY=1 IF IT'S A LAST RECORD OF A FILE
+RD_REC:	PUSH	D
+	LHLD	CURC_R
+	CALL	RD_CLST
+	LHLD	CURC_R
+	CALL	GT_NFC
+	SHLD	CURC_R
+	lhld	ClstSize
+	POP	D
+	RNC
+	LHLD	CURS_R
+	MOV	A,H
+	ORA	L
+	JZ	EXT
+	push	d
+	xchg
+	lhld	ClstSize; File_Size mod Cluster_size
+	xchg
+	call    ?dvnhd
+	xchg
+	pop	d
+	mov	a,h
+	ora	l
+	JNZ	EXT
+	lhld	ClstSize
+EXT:	STC
+	RET
+
+
+; CREATE FILE (DE - FILE PATTERN)
+CRT_FIL:
+;	CALL	RD_FAT
+	XRA	A
+	CALL	SRCH_F
+	JC	F_N_EX
+	PUSH	D
+	CALL	ERS_FIL
+	POP	D
+F_N_EX:	MVI	A,1
+	CALL	SRCH_F
+	INX	D
+	MVI	C,11
+CF0:	LDAX	D
+	MOV	M,A
+	INX	H
+	INX	D
+	DCR	C
+	JNZ	CF0
+	MVI	C,20H-11
+CF1:	MVI	M,0
+	INX	H
+	DCR	C
+	JNZ	CF1
+	PUSH	H
+	LXI	H,2
+	CALL	FND_FREE
+	XCHG
+	POP	H
+	RC
+	LXI	B,-6
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	XCHG
+	SHLD	CURC_W
+	SHLD	OLDC_W
+	CALL	WR_DIR
+	LXI	H,0
+	SHLD	SIZE_W
+	XRA	A
+	RET
+
+
+; WRITE A RECORD (1 CLUSTER) TO
+; A OPENED FILE
+; DE - RECORD BUFFER
+; HL - NUMBER OF BYTES TO WRITE (<>ClstSize FOR LAST RECORD)
+WR_REC:	PUSH	H
+	push	d
+	XCHG
+	LHLD	SIZE_W
+	DAD	D
+	SHLD	SIZE_W
+	LHLD	CURC_W
+	SHLD	OLDC_W
+	pop	d
+	CALL	WR_CLST
+	PUSH	D
+	PUSH	H
+	INX	H
+	CALL	FND_FREE
+	XCHG
+	POP	H
+	CALL	FIL_FAT
+	XCHG
+	SHLD	CURC_W
+	POP	D
+	POP	H
+	RET
+
+; CLOSE OPENED FILE
+CLS_FIL:LHLD	OLDC_W
+	LXI	D,0FF9H
+	CALL	FIL_FAT
+	LHLD	DIR_ADR
+	LXI	D,1CH
+	DAD	D
+	XCHG
+	LHLD	SIZE_W
+	XCHG
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	CALL	WR_FAT
+	CALL	WR_DIR
+	RET
+
+	DSEG
+CURC_R:	DS	2
+CURS_R:	DS	2
+CURC_W:	DS	2
+OLDC_W:	DS	2
+SIZE_W:	DS	2
+	CSEG
+
+; ERASE FILE
+; HL - POINTER TO DIRECTORY ENTRY
+; RETURNS CF=1 IF FILE NOT FOUND
+ERS_FIL:
+	CALL	OPN_FIL
+CL_CHN:	MOV	A,H
+	ORA	L
+	JZ	END_ERS
+	push	h
+	CALL	GT_NFC
+	pop	d
+	PUSH	PSW
+	PUSH	H
+	XCHG
+	LXI	D,0
+	CALL	FIL_FAT
+	POP	H
+	POP	PSW
+	JNC	CL_CHN
+END_ERS:LHLD	DIR_ADR
+	MVI	M,0E5H
+	CALL	WR_FAT
+	CALL	WR_DIR
+	XRA	A
+	RET
+
+	END
+
+FIL_FAT
+	POP	H
+	POP	PSW
+	JNC	CL_CHN
+END_ERS:LHLD	DIR_ADR
+	MVI	M,0E5H
+	CALL	WR_FAT
+	CALL	WR
